@@ -1,0 +1,28 @@
+
+{
+    "Apple": 0,
+    "Bowtie": 1,
+    "Circle": 2,
+    "Cloud": 3,
+    "Cup": 4,
+    "Diamond": 5,
+    "Fish": 6,
+    "Guitar": 7,
+    "Hat": 8,
+    "Headphones": 9,
+    "Ladder": 10,
+    "Laptop": 11,
+    "Leaf": 12,
+    "Moon": 13,
+    "Pants": 14,
+    "Pencil": 15,
+    "Smiley Face": 16,
+    "Soccer Ball": 17,
+    "Sock": 18,
+    "Star": 19,
+    "Sun": 20,
+    "T-Shirt": 21,
+    "Triangle": 22,
+    "Watermelon": 23,
+    "Wine Glass": 24
+}
