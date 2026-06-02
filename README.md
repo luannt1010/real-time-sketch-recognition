@@ -153,10 +153,11 @@ project/
 │   │   │   ├── model_weights/
 │   │   │   ├── cnn_model.py
 │   │   │   ├── preprocess.py
-│   │   │   └── model.pth
+│   │   │   ├── camera_service.py
+│   │   │   └── model_architecture.py
 │   │   │
 │   │   ├── manage.py
-│   └───├── db.sqlite3
+│   └───└── db.sqlite3
 │
 └── README.md
 ```
