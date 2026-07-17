@@ -17,6 +17,12 @@ The system integrates a React frontend, a Django REST API backend, and a custom 
 * Camera-based drawing recognition
 * Responsive web interface
 
+## Demo
+
+<p align="center">
+  <img src="./assets/canvas_draw_demo.gif" width="48%" alt="Demo 1">
+  <img src="./assets/camera_draw_demo.gif" width="48%" alt="Demo 2">
+</p>
 
 ## Technology Stack
 
@@ -59,68 +65,7 @@ The model is trained to recognize the following 25 classes:
 
 The recognition model is a custom CNN architecture enhanced with residual (skip) connections.
 
-## CNN Block
-
-Each CNN block consists of:
-
-* Convolution Layer (3×3)
-* Batch Normalization
-* ReLU Activation
-* Convolution Layer (3×3)
-* Batch Normalization
-* Residual Skip Connection
-* ReLU Activation
-* Max Pooling (2×2)
-
-### Block Structure
-
-Input → Conv → BN → ReLU → Conv → BN → Skip Connection → ReLU → MaxPool
-
-
-## Network Architecture
-
-Input Image: 64 × 64 × 3
-
-### Feature Extractor
-
-Block 1:
-
-* Input Channels: 3
-* Output Channels: 32
-
-Block 2:
-
-* Input Channels: 32
-* Output Channels: 64
-
-Block 3:
-
-* Input Channels: 64
-* Output Channels: 128
-
-Output Feature Map:
-
-128 × 8 × 8
-
-
-### Classifier
-
-Flatten
-
-→ Linear(8192 → 512)
-
-→ ReLU
-
-→ Dropout(0.3)
-
-→ Linear(512 → 256)
-
-→ ReLU
-
-→ Dropout(0.3)
-
-→ Linear(256 → Number of Classes)
-
+<image src="./train_model/architecture/architecture.png" alt="Architecture" width="600"/>
 
 ## Model Summary
 
@@ -172,6 +117,43 @@ git clone <repository-url>
 cd project
 ```
 
+## Train Model 
+If you dont have the model weght for running wed app, u can train model with default command that I used:
+
+```bash
+python .\train.py --num_workers 4 --pin_memory True
+```
+
+### Training Arguments
+
+| Argument        | Type    |       Default | Description            |
+| --------------- | ------- | ------------: | ---------------------- |
+| `--root_dir`    | `str`   |     `dataset` | Dataset directory      |
+| `--save_path`   | `str`   | `checkpoints` | Checkpoint directory   |
+| `--batch_size`  | `int`   |          `32` | Batch size             |
+| `--num_workers` | `int`   |           `0` | Data loading workers   |
+| `--epochs`      | `int`   |          `30` | Number of epochs       |
+| `--val_factor`  | `float` |         `0.1` | Validation split ratio |
+| `--test_factor` | `float` |         `0.1` | Test split ratio       |
+| `--lr`          | `float` |       `0.001` | Learning rate          |
+| `--dropout`     | `float` |         `0.3` | Dropout rate           |
+| `--pin_memory`  | `bool`  |       `False` | Enable pinned memory   |
+
+Training results: 
+<image src="./train_model/checkpoints/metrics_report.png" alt="Architecture" width="600"/>
+
+Testing results:
+
+| Metric    |  Score |
+| --------- | -----: |
+| Precision | 0.9002 |
+| Recall    | 0.8993 |
+| F1-score  | 0.8986 |
+| Accuracy  | 0.9016 |
+
+
+**When u done in training model, u have to place path of weight at backend\src\ai_engine\cnn_model.py**
+
 
 ## Backend Setup
 
@@ -201,12 +183,6 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Apply migrations:
-
-```bash
-python manage.py migrate
-```
-
 Run Django server:
 
 ```bash
@@ -234,10 +210,10 @@ Install dependencies:
 npm install
 ```
 
-Run development server:
+Run wed app:
 
 ```bash
-npm run dev
+npm start
 ```
 
 Frontend will be available at:
@@ -247,17 +223,3 @@ http://localhost:5173
 ```
 
 
-## Future Improvements
-
-* Data augmentation pipeline
-* Transfer learning using ResNet
-* Online model retraining from feedback
-* Deployment on cloud platforms
-* User authentication system
-* Model performance dashboard
-
----
-
-## Author
-
-Developed as a Deep Learning and Computer Vision project using PyTorch, Django, and React.
