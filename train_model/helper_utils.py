@@ -52,10 +52,10 @@ def define_transform(mean, std):
                                         transforms.Normalize(mean, std)])
     return train_transform, val_transform
 
-def get_data_loader(train_dataset, val_dataset, test_dataset, batch_size):
-    train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
-    val_loader = DataLoader(val_dataset, shuffle=False, batch_size=batch_size)
-    test_loader = DataLoader(test_dataset, shuffle=False, batch_size=batch_size)
+def get_data_loader(train_dataset, val_dataset, test_dataset, batch_size, num_workers=0, pin_memory=False):
+    train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, shuffle=False, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, shuffle=False, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers)
     return train_loader, val_loader, test_loader
 
 def compute_p_r_f1(num_classes, tp_per_cls, fp_per_cls, fn_per_cls, epsilon=1e-8):
@@ -75,7 +75,58 @@ def compute_p_r_f1(num_classes, tp_per_cls, fp_per_cls, fn_per_cls, epsilon=1e-8
     macro_f1 = sum(f1s) / num_classes
     return macro_precision, macro_recall, macro_f1
 
-def train(model, optimizer, loss_fn, train_loader, val_loader, epochs, device, scheduler, save_path, epsilon=1e-8):
+def evaluate(model, data_loader, test=True, loss_fn=None, epsilon=1e-8):
+    if not test:
+        if loss_fn is None:
+            raise ValueError("Need loss fn to calculate loss value.")
+        else:
+            val_loss = 0
+            predictions, actuals = [], []
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    num_corrects, total_preds = 0, 0
+    num_classes = model.num_classes
+    tp_per_cls = {k: 0 for k in range(num_classes)}
+    fp_per_cls = {k: 0 for k in range(num_classes)}
+    fn_per_cls = {k: 0 for k in range(num_classes)}
+    data_pbar = tqdm(data_loader, desc="[EVALUATING]", leave=False if not test else True)
+    model = model.to(device)
+    model.eval()
+    with torch.no_grad():
+        for images, labels in data_pbar:
+            images = images.to(device)
+            labels = labels.to(device) 
+            output = model(images)
+
+            if not test:
+                loss = loss_fn(output, labels)
+                val_loss += loss.item()
+
+            _, prediction = output.max(1)
+            total_preds += labels.size(0)
+            num_corrects += (prediction == labels).sum().item()
+
+            # Calculate Precision Recall
+            for act, pred in zip(labels, prediction):
+                if act == pred:
+                    tp_per_cls[act.item()] += 1
+                else:
+                    fp_per_cls[pred.item()] += 1
+                    fn_per_cls[act.item()] += 1
+            if not test:
+                predictions.append(prediction)
+                actuals.append(labels)
+    acc = num_corrects / total_preds           
+    p, r, f1 = compute_p_r_f1(num_classes, tp_per_cls, fp_per_cls, fn_per_cls, epsilon)
+    results = {"metrics": {"precision": p, "recall": r, "f1": f1, "accuracy": acc}}
+    if not test:
+        results["val_loss"] = val_loss / len(data_loader)
+        results["predictions"] = predictions 
+        results["actuals"] = actuals
+    return results
+
+
+def train(model, optimizer, loss_fn, train_loader, val_loader, epochs, scheduler, save_path, epsilon=1e-8):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     best_val_acc = 0
     total_time = 0
@@ -87,11 +138,11 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, epochs, device, s
     best_save_path = os.path.join(save_path, "best.pth")
     last_save_path = os.path.join(save_path, "last.pth")
     his_save_path = os.path.join(save_path, "history.json")
+    print(f"Model is training on {device}.")
     for epoch in range(epochs):
-        start = time.time()
+        start = time.perf_counter()
         model.train()
         running_loss, running_correct, running_total = 0, 0, 0
-        epoch_time = 0
         tp_per_cls = {k: 0 for k in range(num_classes)}
         fp_per_cls = {k: 0 for k in range(num_classes)}
         fn_per_cls = {k: 0 for k in range(num_classes)}
@@ -106,7 +157,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, epochs, device, s
             optimizer.step()
 
             running_total += labels.size(0)
-            running_loss += loss.item() * images.size(0)
+            running_loss += loss.item()
             _, prediction = output.max(1)
             running_correct += (prediction == labels).sum().item()
 
@@ -118,46 +169,57 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, epochs, device, s
                     fp_per_cls[pred.item()] += 1
                     fn_per_cls[act.item()] += 1
 
-        epoch_train_loss = running_loss / len(train_loader.dataset)
+        epoch_train_loss = running_loss / len(train_loader)
         epoch_train_acc = running_correct / running_total
-        train_p, train_r, train_f1 = compute_p_r_f1(num_classes, tp_per_cls, fp_per_cls, fn_per_cls)
+        train_p, train_r, train_f1 = compute_p_r_f1(num_classes, tp_per_cls, fp_per_cls, fn_per_cls, epsilon)
         
-        model.eval()
-        val_loss, val_correct, val_total = 0, 0, 0
-        tp_per_cls = {k: 0 for k in range(num_classes)}
-        fp_per_cls = {k: 0 for k in range(num_classes)}
-        fn_per_cls = {k: 0 for k in range(num_classes)}
-        val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} [Validating]", leave=False)
-        with torch.no_grad():
-            for images, labels in val_pbar:
-                images = images.to(device)
-                labels = labels.to(device) 
-                output = model(images)
+        # model.eval()
+        # val_loss, val_correct, val_total = 0, 0, 0
+        # tp_per_cls = {k: 0 for k in range(num_classes)}
+        # fp_per_cls = {k: 0 for k in range(num_classes)}
+        # fn_per_cls = {k: 0 for k in range(num_classes)}
+        # val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} [Validating]", leave=False)
+        # with torch.no_grad():
+        #     for images, labels in val_pbar:
+        #         images = images.to(device)
+        #         labels = labels.to(device) 
+        #         output = model(images)
 
-                loss = loss_fn(output, labels)
-                val_loss += loss.item() * images.size(0)
+        #         loss = loss_fn(output, labels)
+        #         val_loss += loss.item() * images.size(0)
 
-                _, prediction = output.max(1)
-                val_total += labels.size(0)
-                val_correct += (prediction == labels).sum().item()
+        #         _, prediction = output.max(1)
+        #         val_total += labels.size(0)
+        #         val_correct += (prediction == labels).sum().item()
 
-                # Calculate Precision Recall
-                for act, pred in zip(labels, prediction):
-                    if act == pred:
-                        tp_per_cls[act.item()] += 1
-                    else:
-                        fp_per_cls[pred.item()] += 1
-                        fn_per_cls[act.item()] += 1
+        #         # Calculate Precision Recall
+        #         for act, pred in zip(labels, prediction):
+        #             if act == pred:
+        #                 tp_per_cls[act.item()] += 1
+        #             else:
+        #                 fp_per_cls[pred.item()] += 1
+        #                 fn_per_cls[act.item()] += 1
                 
-                # Save log to calc confusion matrix
-                history["all_preds"].append(prediction)
-                history["actuals"].append(labels)
-        end = time.time()
+        #         # Save log to calc confusion matrix
+        #         history["all_preds"].append(prediction)
+        #         history["actuals"].append(labels)
+        # end = time.perf_counter()
+        # epoch_time = (end - start) / 60
+        # total_time += epoch_time
+        # epoch_val_loss = val_loss / len(val_loader.dataset)
+        # epoch_val_acc = val_correct / val_total
+        # val_p, val_r, val_f1 = compute_p_r_f1(num_classes, tp_per_cls, fp_per_cls, fn_per_cls, epsilon)
+        results = evaluate(model, val_loader, test=False, loss_fn=loss_fn)
+        metrics = results["metrics"]
+        epoch_val_loss = results["val_loss"]
+        epoch_val_acc = metrics["accuracy"]
+        val_p, val_r, val_f1 = metrics["precision"], metrics["recall"], metrics["f1"]
+        history["all_preds"].extend(results["predictions"])
+        history["actuals"].extend(results["actuals"])
+
+        end = time.perf_counter()
         epoch_time = (end - start) / 60
         total_time += epoch_time
-        epoch_val_loss = val_loss / len(val_loader.dataset)
-        epoch_val_acc = val_correct / val_total
-        val_p, val_r, val_f1 = compute_p_r_f1(num_classes, tp_per_cls, fp_per_cls, fn_per_cls)
 
         print(f"Epoch {epoch+1}/{epochs} | "
             f"Train Loss={epoch_train_loss:.4f} "
@@ -192,7 +254,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, epochs, device, s
 
         if scheduler is not None:
             if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-                scheduler.step(epoch_val_acc)
+                scheduler.step(val_f1)
             else:
                 scheduler.step()
 
@@ -364,7 +426,8 @@ def preprocess(img_path):
     rgb = cv2.cvtColor(resized, cv2.COLOR_GRAY2RGB)
     return rgb
 
-def inference(img_path, model, device):
+def inference(img_path, model):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     img = preprocess(img_path)
     trans = transforms.Compose([transforms.ToTensor(),
                                 transforms.Normalize([0.1577, 0.1577, 0.1577], [0.3355, 0.3355, 0.3355])])
