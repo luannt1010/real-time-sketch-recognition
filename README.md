@@ -113,11 +113,37 @@ project/
 ### Clone Repository
 
 ```bash
-git clone <repository-url>
-cd project
+git clone https://github.com/luannt1010/real-time-sketch-recognition.git
+cd real-time-sketch-recognition
 ```
 
-## Train Model 
+### Create virtual environment:
+
+```bash
+python -m venv venv
+```
+
+### Activate environment:
+
+Windows:
+
+```bash
+venv\Scripts\activate
+```
+
+Linux / MacOS:
+
+```bash
+source venv/bin/activate
+```
+
+### Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Train Model 
 If you dont have the model weght for running wed app, u can train model with default command that I used:
 
 ```bash
@@ -157,30 +183,10 @@ Testing results:
 
 ## Backend Setup
 
-Create virtual environment:
+Navigate to backend folder:
 
 ```bash
-python -m venv venv
-```
-
-Activate environment:
-
-Windows:
-
-```bash
-venv\Scripts\activate
-```
-
-Linux / MacOS:
-
-```bash
-source venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
+cd backend
 ```
 
 Run Django server:
