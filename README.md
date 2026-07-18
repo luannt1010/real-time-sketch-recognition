@@ -147,6 +147,7 @@ pip install -r requirements.txt
 If you dont have the model weght for running wed app, u can train model with default command that I used:
 
 ```bash
+cd train_model
 python .\train.py --num_workers 4 --pin_memory True
 ```
 
@@ -186,7 +187,7 @@ Testing results:
 Navigate to backend folder:
 
 ```bash
-cd backend
+cd .\backend\src
 ```
 
 Run Django server:
